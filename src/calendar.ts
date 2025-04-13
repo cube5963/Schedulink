@@ -12,8 +12,8 @@ export async function getEvents() {
     try {
         const calendar = google.calendar({ version: 'v3', auth: apiKey });
 
-        const noew = new Date();
-        const startOfDay = new Date(noew.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+        const now = new Date();
+        const startOfDay = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(startOfDay);
         endOfDay.setHours(23, 59, 59, 999);
@@ -37,11 +37,23 @@ export async function getEvents() {
             timeZone: 'Asia/Tokyo',
         });
 
-        return events.map(event => {
-            const start = event.start?.dateTime || event.start?.date;
-            const formattedTime = start ? formatter.format(new Date(start)) : '不明な時間';
-            return `予定: ${event.summary} (${formattedTime})`;
-        }).join('\n');
+        // 今日の日付を文字列で取得 (例: "2025-04-08")
+        const todayDateString = startOfDay.toISOString().split('T')[0];
+
+        return events
+            .filter(event => {
+                // 終日の予定の場合は日付が今日と一致するか確認
+                if (event.start?.date) {
+                    return event.start.date === todayDateString;
+                }
+                return true; // 時間指定の予定はそのまま含める
+            })
+            .map(event => {
+                const start = event.start?.dateTime || event.start?.date;
+                const formattedTime = start ? formatter.format(new Date(start)) : '終日';
+                return `予定: ${event.summary} (${formattedTime})`;
+            })
+            .join('\n');
     } catch (error: any) {
         console.error('Google Calendar APIエラー:', error.message);
         if (error.response) {
