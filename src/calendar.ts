@@ -26,10 +26,22 @@ export async function getEvents() {
             orderBy: 'startTime',
         });
 
-        const events = res.data.items;
-        if (!events || events.length === 0) {
-            return '今日の予定はありません。';
-        }
+        const events = res.data.items || [];
+
+        const nextDayStart = new Date(startOfDay);
+        nextDayStart.setDate(nextDayStart.getDate() + 1);
+        const nextDayEnd = new Date(nextDayStart);
+        nextDayEnd.setHours(23, 59, 59, 999);
+
+        const nextDayRes = await calendar.events.list({
+            calendarId: calendarId,
+            timeMin: nextDayStart.toISOString(),
+            timeMax: nextDayEnd.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+        });
+
+        const nextDayEvents = nextDayRes.data.items || [];
 
         const formatter = new Intl.DateTimeFormat('ja-JP', {
             hour: '2-digit',
@@ -37,23 +49,49 @@ export async function getEvents() {
             timeZone: 'Asia/Tokyo',
         });
 
-        // 今日の日付を文字列で取得 (例: "2025-04-08")
         const todayDateString = startOfDay.toISOString().split('T')[0];
+        const nextDayDateString = nextDayStart.toISOString().split('T')[0];
 
-        return events
-            .filter(event => {
-                // 終日の予定の場合は日付が今日と一致するか確認
-                if (event.start?.date) {
-                    return event.start.date === todayDateString;
-                }
-                return true; // 時間指定の予定はそのまま含める
-            })
-            .map(event => {
-                const start = event.start?.dateTime || event.start?.date;
-                const formattedTime = start ? formatter.format(new Date(start)) : '終日';
-                return `予定: ${event.summary} (${formattedTime})`;
-            })
-            .join('\n');
+        const filteredEvents = events.filter(event => {
+            if (event.start?.date) {
+                return event.start.date === todayDateString;
+            }
+            return true;
+        });
+
+        const filteredNextDayEvents = nextDayEvents.filter(event => {
+            if (event.start?.date) {
+                return event.start.date === nextDayDateString;
+            }
+            return true;
+        });
+
+        // 今日の予定の最後と次の日の予定の最初を比較して同じなら今日の予定から削除
+        if (filteredEvents.length > 0 && filteredNextDayEvents.length > 0) {
+            const lastTodayEvent = filteredEvents[filteredEvents.length - 1];
+            const firstNextDayEvent = filteredNextDayEvents[0];
+
+            const lastTodayEventTime = lastTodayEvent.start?.dateTime || lastTodayEvent.start?.date;
+            const firstNextDayEventTime = firstNextDayEvent.start?.dateTime || firstNextDayEvent.start?.date;
+
+            if (lastTodayEventTime && firstNextDayEventTime && new Date(lastTodayEventTime).getTime() === new Date(firstNextDayEventTime).getTime()) {
+                filteredEvents.pop();
+            }
+        }
+
+        const formattedEvents = filteredEvents.map(event => {
+            const start = event.start?.dateTime || event.start?.date;
+            const formattedTime = start ? formatter.format(new Date(start)) : '終日';
+            return `予定: ${event.summary} (${formattedTime})`;
+        });
+
+        const formattedNextDayEvents = filteredNextDayEvents.map(event => {
+            const start = event.start?.dateTime || event.start?.date;
+            const formattedTime = start ? formatter.format(new Date(start)) : '終日';
+            return `次の日の予定: ${event.summary} (${formattedTime})`;
+        });
+
+        return formattedEvents.concat(formattedNextDayEvents).join('\n');
     } catch (error: any) {
         console.error('Google Calendar APIエラー:', error.message);
         if (error.response) {
