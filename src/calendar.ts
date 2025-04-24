@@ -88,7 +88,8 @@ export async function getEvents() {
         const formattedNextDayEvents = filteredNextDayEvents.map(event => {
             const start = event.start?.dateTime || event.start?.date;
             const formattedTime = start ? formatter.format(new Date(start)) : '終日';
-            return `次の日の予定: ${event.summary} (${formattedTime})`;
+            //次の日の予定を表示しない
+            return '';
         });
 
         return formattedEvents.concat(formattedNextDayEvents).join('\n');
